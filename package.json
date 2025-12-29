@@ -1,0 +1,51 @@
+{
+  "name": "tugas-virtual-lab-pawm-kelompok-8-physphere-mobile",
+  "version": "1.0.0",
+  "description": "PhySphere: Virtual Lab Gerak Harmonik Sederhana - Mobile Version with Expo Go",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/florecita24/Tugas-Virtual-Lab-PAWM-Kelompok-8-PhySphere-Mobile.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/florecita24/Tugas-Virtual-Lab-PAWM-Kelompok-8-PhySphere-Mobile/issues"
+  },
+  "homepage": "https://github.com/florecita24/Tugas-Virtual-Lab-PAWM-Kelompok-8-PhySphere-Mobile#readme",
+  "dependencies": {
+    "@react-native-community/slider": "^5.0.1",
+    "@react-native-masked-view/masked-view": "^0.3.2",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native-stack": "^6.9.17",
+    "@supabase/supabase-js": "^2.39.0",
+    "expo": "~54.0.0",
+    "expo-linear-gradient": "^15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "expo-web-browser": "^15.0.10",
+    "react": "^19.1.0",
+    "react-native": "^0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-worklets": "^0.5.1",
+    "react-native-worklets-core": "^1.6.2"
+  },
+  "devDependencies": {
+    "@babel/helper-define-polyfill-provider": "^0.6.5",
+    "babel-plugin-polyfill-corejs2": "^0.4.14",
+    "babel-plugin-polyfill-corejs3": "^0.13.0",
+    "babel-plugin-polyfill-regenerator": "^0.6.5"
+  }
+}
