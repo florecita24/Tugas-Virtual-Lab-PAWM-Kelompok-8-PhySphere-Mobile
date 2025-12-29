@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../services/supabaseClient';
 
 const QUIZ_DATA = {
   getaran: {
@@ -126,7 +127,20 @@ export default function KuisScreen() {
   const [timeLeft, setTimeLeft] = useState(120); // 2 minutes
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
+  const [userId, setUserId] = useState(null);
   const timerRef = useRef(null);
+
+  // Get user ID on mount
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        console.log('✅ [KUIS] User ID loaded:', user.id);
+      }
+    };
+    getUser();
+  }, []);
 
   useEffect(() => {
     if (isStarted && !showResult) {
@@ -178,7 +192,42 @@ export default function KuisScreen() {
     setAnswers({ ...answers, [questionIndex]: answer });
   };
 
-  const handleSubmit = () => {
+  const saveQuizToSupabase = async (topic, quizScore, totalQuestions, percentage, passed) => {
+    if (!userId) {
+      console.warn('⚠️ [KUIS] User ID tidak tersedia, quiz tidak disimpan');
+      return;
+    }
+
+    try {
+      const quizData = {
+        user_id: userId,
+        quiz_key: topic,
+        quiz_name: QUIZ_DATA[topic].title,
+        score: quizScore,
+        max_score: totalQuestions,
+        percentage: percentage,
+        passed: passed,
+      };
+
+      console.log('💾 [KUIS] Menyimpan quiz ke database:', quizData);
+
+      const { data, error } = await supabase
+        .from('quiz_history')
+        .insert([quizData])
+        .select();
+
+      if (error) {
+        console.error('❌ [KUIS] Error saving quiz:', error);
+        Alert.alert('Error', 'Gagal menyimpan hasil quiz: ' + error.message);
+      } else {
+        console.log('✅ [KUIS] Quiz berhasil disimpan:', data);
+      }
+    } catch (error) {
+      console.error('❌ [KUIS] Exception saving quiz:', error);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     
     const quiz = QUIZ_DATA[selectedTopic];
@@ -197,6 +246,11 @@ export default function KuisScreen() {
     
     setScore(correct);
     setShowResult(true);
+
+    // Save to database
+    const percentage = Math.round((correct / quiz.questions.length) * 100);
+    const passed = percentage >= 60;
+    await saveQuizToSupabase(selectedTopic, correct, quiz.questions.length, percentage, passed);
   };
 
   const moveItem = (questionIndex, fromIdx, toIdx) => {

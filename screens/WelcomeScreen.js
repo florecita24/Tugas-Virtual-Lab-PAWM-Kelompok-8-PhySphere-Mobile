@@ -35,10 +35,11 @@ export default function WelcomeScreen({ navigation }) {
 
   const handleGoogleLogin = async () => {
     try {
+      // Show a loading state could be added here
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'physphere://auth-callback',
+          redirectTo: 'exp://127.0.0.1:8081', // Expo Go development URL
           skipBrowserRedirect: false,
         },
       });
@@ -52,27 +53,52 @@ export default function WelcomeScreen({ navigation }) {
       if (data?.url) {
         const result = await WebBrowser.openAuthSessionAsync(
           data.url,
-          'physphere://auth-callback'
+          'exp://127.0.0.1:8081' // Redirect back to Expo Go
         );
         
         if (result.type === 'success') {
           // Handle the redirect URL
           const { url } = result;
-          const params = new URLSearchParams(url.split('#')[1]);
-          const access_token = params.get('access_token');
-          const refresh_token = params.get('refresh_token');
+          
+          // Parse the URL to extract tokens
+          let access_token, refresh_token;
+          
+          // Try to parse from hash fragment
+          if (url.includes('#')) {
+            const params = new URLSearchParams(url.split('#')[1]);
+            access_token = params.get('access_token');
+            refresh_token = params.get('refresh_token');
+          }
+          
+          // Try to parse from query string
+          if (!access_token && url.includes('?')) {
+            const params = new URLSearchParams(url.split('?')[1]);
+            access_token = params.get('access_token');
+            refresh_token = params.get('refresh_token');
+          }
           
           if (access_token) {
-            await supabase.auth.setSession({
+            // Set the session with the tokens
+            const { error: sessionError } = await supabase.auth.setSession({
               access_token,
               refresh_token,
             });
+            
+            if (sessionError) {
+              Alert.alert('Error', 'Gagal menyimpan sesi login.');
+            } else {
+              Alert.alert('Sukses', 'Login dengan Google berhasil!');
+            }
+          } else {
+            Alert.alert('Error', 'Tidak dapat mengambil token dari Google.');
           }
+        } else if (result.type === 'cancel') {
+          Alert.alert('Dibatalkan', 'Login dengan Google dibatalkan.');
         }
       }
     } catch (err) {
       console.error('Google signin error', err);
-      Alert.alert('Error', 'Gagal memulai proses login Google.');
+      Alert.alert('Error', 'Terjadi kesalahan saat login dengan Google.');
     }
   };
 

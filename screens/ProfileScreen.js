@@ -21,6 +21,38 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadData();
+    
+    // Setup realtime listener for quiz history
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      console.log('🔔 [PROFILE] Setting up realtime for quiz_history');
+
+      const channel = supabase
+        .channel('profile_quiz_updates_' + user.id)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'quiz_history',
+          filter: `user_id=eq.${user.id}`
+        }, (payload) => {
+          console.log('📥 [PROFILE] New quiz data received:', payload.new);
+          // Reload data when new quiz is inserted
+          loadData();
+        })
+        .subscribe((status, err) => {
+          console.log('🔔 [PROFILE] Subscription status:', status);
+          if (err) console.error('❌ [PROFILE] Subscription error:', err);
+        });
+
+      return () => {
+        console.log('🧹 [PROFILE] Cleaning up realtime subscription');
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupRealtime();
   }, []);
 
   const loadData = async () => {

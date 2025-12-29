@@ -1349,6 +1349,74 @@ setTimeout(()=>{
 
     try{ if(typeof upsertProfileFromOAuth === 'function') await upsertProfileFromOAuth(); }catch(e){ console.warn('upsertProfileFromOAuth failed', e); }
 
+    // Setup realtime listeners function
+    function setupRealtimeListeners(sup, uid) {
+      if (!sup || !uid) return;
+      
+      try {
+        console.log('🔔 [WEB] Setting up realtime listeners for user:', uid);
+
+        // Clean up existing channels
+        if (window.__quizHistoryChannel) {
+          supabase.removeChannel(window.__quizHistoryChannel);
+        }
+        if (window.__materiProgressChannel) {
+          supabase.removeChannel(window.__materiProgressChannel);
+        }
+
+        // Listen for materi_progress changes
+        window.__materiProgressChannel = sup
+          .channel('profile_materi_sync_' + uid)
+          .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profile',
+            filter: `id=eq.${uid}`
+          }, (payload) => {
+            console.log('📥 [WEB] Profile updated:', payload.new);
+            // Update state from realtime
+            const data = payload.new;
+            if (data && data.materi_progress) {
+              const mp = data.materi_progress;
+              state.getaran = mp.getaran || false;
+              state.ghs = mp.ghs || false;
+              state.bandul = mp.bandul || false;
+              state.pegas = mp.pegas || false;
+              try {
+                updateProgressUI();
+                refreshButtons();
+              } catch(e) {}
+            }
+          })
+          .subscribe((status, err) => {
+            console.log('🔔 [WEB] Materi progress subscription status:', status);
+            if(err) console.error('❌ [WEB] Materi subscription error:', err);
+          });
+
+        // Listen for quiz_history changes
+        window.__quizHistoryChannel = sup
+          .channel('quiz_history_sync_' + uid)
+          .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'quiz_history',
+            filter: `user_id=eq.${uid}`
+          }, (payload) => {
+            console.log('🔔 [WEB] Realtime quiz_history INSERT:', payload);
+            console.log('📥 [WEB] New quiz data:', payload.new);
+            try{ if(typeof window.showProfileView === 'function') window.showProfileView(); }catch(e){}
+          })
+          .subscribe((status, err) => {
+            console.log('🔔 [WEB] Quiz history subscription status:', status);
+            if(err) console.error('❌ [WEB] Quiz subscription error:', err);
+          });
+          
+        console.log('✅ [WEB] Realtime listeners setup complete');
+      }catch(e){ 
+        console.error('❌ [WEB] Failed to setup realtime listeners:', e); 
+      }
+    }
+
     try{ 
       if(typeof checkLoginStatus === 'function') {
         const isLoggedIn = await checkLoginStatus();
@@ -1359,6 +1427,15 @@ setTimeout(()=>{
     try{ if(typeof loadProgressFromSupabase === 'function') await loadProgressFromSupabase(); }catch(e){ console.warn('loadProgressFromSupabase failed', e); }
     try{ if(typeof flushProgressQueue === 'function') await flushProgressQueue(); }catch(e){ console.warn('flushProgressQueue failed', e); }
     try{ if(typeof window.showProfileView === 'function') await window.showProfileView(); }catch(e){ console.warn('showProfileView failed', e); }
+
+    // Setup realtime for initial load if user already logged in
+    try{
+      const sup = (typeof window !== 'undefined' && window.supabase) ? window.supabase : (typeof supabase !== 'undefined' ? supabase : null);
+      if(sup && user_id){
+        console.log('📡 Setting up realtime for already logged in user');
+        setupRealtimeListeners(sup, user_id);
+      }
+    }catch(e){ console.warn('Failed to setup initial realtime', e); }
 
     try{
       const sup = (typeof window !== 'undefined' && window.supabase) ? window.supabase : (typeof supabase !== 'undefined' ? supabase : null);
@@ -1375,6 +1452,13 @@ setTimeout(()=>{
             try{ if(typeof flushProgressQueue === 'function') await flushProgressQueue(); }catch(e){ console.warn('auth listener: flushProgressQueue failed', e); }
             
             try{ if(typeof window.showProfileView === 'function') await window.showProfileView(); }catch(e){ console.warn('auth listener: showProfileView failed', e); }
+            
+            // Setup realtime listeners on sign in
+            try{
+              if(user_id && typeof setupRealtimeListeners === 'function'){
+                setupRealtimeListeners(sup, user_id);
+              }
+            }catch(e){ console.warn('Failed to setup realtime on SIGNED_IN', e); }
             
             setTimeout(() => {
               try{

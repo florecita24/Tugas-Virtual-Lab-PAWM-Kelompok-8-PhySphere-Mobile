@@ -3,9 +3,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Linking } from 'react-native';
 
 // Import screens
+import SplashScreen from './screens/SplashScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
@@ -20,6 +21,25 @@ import { supabase } from './services/supabaseClient';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Linking configuration for deep linking
+const linking = {
+  prefixes: ['physphere://', 'exp://127.0.0.1:8081'],
+  config: {
+    screens: {
+      Auth: {
+        screens: {
+          Welcome: 'auth-callback',
+        },
+      },
+      App: {
+        screens: {
+          Home: 'home',
+        },
+      },
+    },
+  },
+};
 
 // Auth Stack untuk welcome/login/register
 function AuthStack() {
@@ -90,6 +110,7 @@ function AppTabs() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [state, dispatch] = React.useReducer(
     (prevState, action) => {
       switch (action.type) {
@@ -142,10 +163,54 @@ export default function App() {
       }
     });
 
-    return () => subscription?.unsubscribe();
+    // Handle deep links for OAuth callback
+    const handleDeepLink = (event) => {
+      const url = event.url;
+      if (url) {
+        // Check if this is an auth callback
+        let access_token, refresh_token;
+        
+        if (url.includes('#')) {
+          const params = new URLSearchParams(url.split('#')[1]);
+          access_token = params.get('access_token');
+          refresh_token = params.get('refresh_token');
+        }
+        
+        if (!access_token && url.includes('?')) {
+          const params = new URLSearchParams(url.split('?')[1]);
+          access_token = params.get('access_token');
+          refresh_token = params.get('refresh_token');
+        }
+        
+        if (access_token) {
+          supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+        }
+      }
+    };
+
+    // Listen for incoming deep links
+    const linkingSubscription = Linking.addEventListener('url', handleDeepLink);
+
+    // Check if app was opened with a deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink({ url });
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+      linkingSubscription?.remove();
+    };
   }, []);
 
-  if (state.isLoading) {
+  if (state.isLoading || showSplash) {
+    if (showSplash) {
+      return <SplashScreen onFinish={() => setShowSplash(false)} />;
+    }
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
         <ActivityIndicator size="large" color="#a855f7" />
@@ -154,7 +219,7 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {state.userToken == null ? <AuthStack /> : <AppTabs />}
     </NavigationContainer>
   );

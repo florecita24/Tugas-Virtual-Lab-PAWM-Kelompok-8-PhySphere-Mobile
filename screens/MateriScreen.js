@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../services/supabaseClient';
 
 const MATERI_DATA = [
   {
@@ -162,9 +163,105 @@ const getYouTubeThumbnail = (url) => {
 export default function MateriScreen() {
   const [selectedMateri, setSelectedMateri] = useState('getaran');
   const [readModules, setReadModules] = useState({});
+  const [userId, setUserId] = useState(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const currentMateri = MATERI_DATA.find((m) => m.id === selectedMateri);
+
+  // Load progress from Supabase
+  const loadProgressFromSupabase = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setUserId(user.id);
+
+      const { data, error } = await supabase
+        .from('profile')
+        .select('materi_progress')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error loading progress:', error);
+        return;
+      }
+
+      if (data && data.materi_progress) {
+        const progress = data.materi_progress;
+        const readState = {};
+        if (progress.getaran) readState['getaran'] = true;
+        if (progress.ghs) readState['ghs'] = true;
+        if (progress.bandul) readState['bandul'] = true;
+        if (progress.pegas) readState['pegas'] = true;
+        setReadModules(readState);
+      }
+    } catch (error) {
+      console.error('Exception loading progress:', error);
+    }
+  };
+
+  // Save progress to Supabase
+  const saveProgressToSupabase = async (newReadModules) => {
+    if (!userId) return;
+
+    try {
+      const progress = {
+        getaran: newReadModules['getaran'] || false,
+        ghs: newReadModules['ghs'] || false,
+        bandul: newReadModules['bandul'] || false,
+        pegas: newReadModules['pegas'] || false,
+      };
+
+      const { error } = await supabase
+        .from('profile')
+        .update({ materi_progress: progress })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Error saving progress:', error);
+      }
+    } catch (error) {
+      console.error('Exception saving progress:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadProgressFromSupabase();
+
+    // Setup realtime listener
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const channel = supabase
+        .channel('profile_materi_' + user.id)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profile',
+          filter: `id=eq.${user.id}`
+        }, (payload) => {
+          const data = payload.new;
+          if (data.materi_progress) {
+            const progress = data.materi_progress;
+            const readState = {};
+            if (progress.getaran) readState['getaran'] = true;
+            if (progress.ghs) readState['ghs'] = true;
+            if (progress.bandul) readState['bandul'] = true;
+            if (progress.pegas) readState['pegas'] = true;
+            setReadModules(readState);
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupRealtime();
+  }, []);
 
   const openVideo = (url) => {
     Linking.openURL(url).catch((err) =>
@@ -180,6 +277,7 @@ export default function MateriScreen() {
       } else {
         newState[id] = true;
       }
+      saveProgressToSupabase(newState);
       return newState;
     });
   };
