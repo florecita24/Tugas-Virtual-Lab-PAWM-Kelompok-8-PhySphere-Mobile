@@ -8,6 +8,14 @@
     "scheme": "physphere",
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ff0d77fa-210b-40a1-9412-8d38985aa109"
+      }
+    },
+    "android": {
+      "package": "com.felowrii.physpheremobile"
+    }
   }
 }
