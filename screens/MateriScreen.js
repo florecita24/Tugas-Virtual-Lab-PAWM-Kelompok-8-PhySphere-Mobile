@@ -169,7 +169,7 @@ export default function MateriScreen() {
   const currentMateri = MATERI_DATA.find((m) => m.id === selectedMateri);
 
   // Load progress from Supabase
-  const loadProgressFromSupabase = async () => {
+  const loadProgress = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -202,10 +202,14 @@ export default function MateriScreen() {
   };
 
   // Save progress to Supabase
-  const saveProgressToSupabase = async (newReadModules) => {
-    if (!userId) return;
-
+  const saveProgress = async (newReadModules) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No user logged in');
+        return;
+      }
+
       const progress = {
         getaran: newReadModules['getaran'] || false,
         ghs: newReadModules['ghs'] || false,
@@ -213,54 +217,25 @@ export default function MateriScreen() {
         pegas: newReadModules['pegas'] || false,
       };
 
+      console.log('💾 Saving progress:', progress);
+
       const { error } = await supabase
         .from('profile')
         .update({ materi_progress: progress })
-        .eq('id', userId);
+        .eq('id', user.id);
 
       if (error) {
-        console.error('Error saving progress:', error);
+        console.error('❌ Error saving progress:', error);
+      } else {
+        console.log('✅ Progress saved successfully');
       }
     } catch (error) {
-      console.error('Exception saving progress:', error);
+      console.error('❌ Exception saving progress:', error);
     }
   };
 
   useEffect(() => {
-    loadProgressFromSupabase();
-
-    // Setup realtime listener
-    const setupRealtime = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const channel = supabase
-        .channel('profile_materi_' + user.id)
-        .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profile',
-          filter: `id=eq.${user.id}`
-        }, (payload) => {
-          const data = payload.new;
-          if (data.materi_progress) {
-            const progress = data.materi_progress;
-            const readState = {};
-            if (progress.getaran) readState['getaran'] = true;
-            if (progress.ghs) readState['ghs'] = true;
-            if (progress.bandul) readState['bandul'] = true;
-            if (progress.pegas) readState['pegas'] = true;
-            setReadModules(readState);
-          }
-        })
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    setupRealtime();
+    loadProgress();
   }, []);
 
   const openVideo = (url) => {
@@ -269,17 +244,15 @@ export default function MateriScreen() {
     );
   };
 
-  const markAsRead = (id) => {
-    setReadModules((prev) => {
-      const newState = { ...prev };
-      if (newState[id]) {
-        delete newState[id];
-      } else {
-        newState[id] = true;
-      }
-      saveProgressToSupabase(newState);
-      return newState;
-    });
+  const markAsRead = async (id) => {
+    const newState = { ...readModules };
+    if (newState[id]) {
+      delete newState[id];
+    } else {
+      newState[id] = true;
+    }
+    setReadModules(newState);
+    await saveProgress(newState);
   };
 
   const calculateProgress = () => {

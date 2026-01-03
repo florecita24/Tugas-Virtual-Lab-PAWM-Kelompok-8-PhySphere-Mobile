@@ -7,18 +7,25 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
+  Modal,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../services/supabaseClient';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 export default function LabScreen() {
+  const navigation = useNavigation();
   const [mode, setMode] = useState('pegas'); // 'pegas' or 'bandul'
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showResult, setShowResult] = useState(false);
+  const [materiProgress, setMateriProgress] = useState(0);
+  const [showLockModal, setShowLockModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const animValue = useRef(new Animated.Value(0)).current;
   const animationRef = useRef(null);
 
@@ -31,6 +38,75 @@ export default function LabScreen() {
   const [L, setL] = useState(1.0);
   const [g, setG] = useState(9.81);
   const [theta, setTheta] = useState(10);
+
+  // Load progress from Supabase
+  const loadProgress = async () => {
+    try {
+      setIsLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('⚠️ No user logged in');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('📊 Loading progress for user:', user.id);
+
+      const { data, error } = await supabase
+        .from('profile')
+        .select('materi_progress')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('❌ Error loading progress:', error);
+        setMateriProgress(0);
+        setShowLockModal(true);
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('📥 Data loaded:', data);
+
+      if (data && data.materi_progress) {
+        const progress = data.materi_progress;
+        let readCount = 0;
+        if (progress.getaran) readCount++;
+        if (progress.ghs) readCount++;
+        if (progress.bandul) readCount++;
+        if (progress.pegas) readCount++;
+        const percentage = Math.round((readCount / 4) * 100);
+        
+        console.log(`📈 Progress: ${percentage}% (${readCount}/4 materi)`);
+        setMateriProgress(percentage);
+        
+        if (percentage < 100) {
+          console.log('🔒 Lab locked - showing modal');
+          setShowLockModal(true);
+        } else {
+          console.log('🔓 Lab unlocked');
+          setShowLockModal(false);
+        }
+      } else {
+        console.log('📭 No progress data - showing modal');
+        setMateriProgress(0);
+        setShowLockModal(true);
+      }
+      setIsLoading(false);
+    } catch (error) {
+      console.error('❌ Exception loading progress:', error);
+      setMateriProgress(0);
+      setShowLockModal(true);
+      setIsLoading(false);
+    }
+  };
+
+  // Load progress when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadProgress();
+    }, [])
+  );
 
   const calculatePegasResults = () => {
     const omega = Math.sqrt(k / massa);
@@ -177,6 +253,48 @@ export default function LabScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Lock Modal */}
+      <Modal
+        visible={showLockModal && !isLoading}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {/* Icon */}
+            <View style={styles.modalIconContainer}>
+              <Ionicons name="lock-closed" size={60} color="#7c3aed" />
+            </View>
+
+            <Text style={styles.modalTitle}>Lab Terkunci</Text>
+            <Text style={styles.modalMessage}>
+              Selesaikan semua materi (100%) untuk membuka PhySphere Lab.
+            </Text>
+            <Text style={styles.modalProgress}>
+              Progress saat ini: {materiProgress}%
+            </Text>
+            
+            <TouchableOpacity
+              style={styles.modalButtonPrimary}
+              onPress={() => {
+                setShowLockModal(false);
+                navigation.navigate('Materi');
+              }}
+            >
+              <LinearGradient
+                colors={['#7c3aed', '#a855f7']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.modalButtonGradient}
+              >
+                <Text style={styles.modalButtonText}>Ke Materi</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView style={styles.scrollView}>
         {/* Header */}
         <View style={styles.header}>
@@ -334,7 +452,10 @@ export default function LabScreen() {
         <View style={styles.visualizationCard}>
           <LinearGradient
             colors={['#1e293b', '#334155']}
-            style={styles.canvas}
+            style={[
+              styles.canvas,
+              mode === 'bandul' && { height: Math.max(300, L * 50 + 200) }
+            ]}
           >
             <View style={styles.canvasContent}>
               {mode === 'pegas' ? (
@@ -348,7 +469,7 @@ export default function LabScreen() {
                           {
                             translateY: animValue.interpolate({
                               inputRange: [0, 1],
-                              outputRange: [0, amplitudo * 80], // Scale amplitudo to pixels
+                              outputRange: [0, Math.min(amplitudo * 60, 120)], // Limit max movement
                             }),
                           },
                         ],
@@ -369,7 +490,7 @@ export default function LabScreen() {
                           {
                             translateY: animValue.interpolate({
                               inputRange: [0, 1],
-                              outputRange: [0, amplitudo * 80],
+                              outputRange: [0, Math.min(amplitudo * 60, 120)],
                             }),
                           },
                         ],
@@ -385,7 +506,7 @@ export default function LabScreen() {
                     style={[
                       styles.bandulStringWrapper,
                       {
-                        height: L * 50 + 20, // Scale L to pixels
+                        height: Math.min(L * 40, 200) + 20, // Limit max length
                         transform: [
                           {
                             rotate: animValue.interpolate({
@@ -397,15 +518,17 @@ export default function LabScreen() {
                       },
                     ]}
                   >
-                    <View style={[styles.bandulString, { height: L * 50 }]} />
+                    <View style={[styles.bandulString, { height: Math.min(L * 40, 200) }]} />
                     <View style={styles.bandulBob} />
                   </Animated.View>
                 </View>
               )}
               {isRunning && (
-                <Text style={styles.canvasText}>
-                  {isPaused ? 'Simulasi dijeda' : 'Simulasi berjalan...'}
-                </Text>
+                <View style={styles.canvasTextContainer}>
+                  <Text style={styles.canvasText}>
+                    {isPaused ? 'Simulasi dijeda' : 'Simulasi berjalan...'}
+                  </Text>
+                </View>
               )}
             </View>
           </LinearGradient>
@@ -646,15 +769,19 @@ const styles = StyleSheet.create({
   },
   canvas: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    minHeight: 300,
   },
   canvasContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 30,
+    position: 'relative',
   },
   pegasContainer: {
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 20,
   },
   pegasTop: {
     width: 100,
@@ -692,11 +819,10 @@ const styles = StyleSheet.create({
   bandulContainer: {
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingTop: 0,
+    paddingTop: 40,
+    width: '100%',
   },
   bandulStringWrapper: {
-    position: 'absolute',
-    top: -80,
     alignItems: 'center',
   },
   bandulString: {
@@ -712,10 +838,21 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
     marginTop: -2,
   },
+  canvasTextContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
   canvasText: {
     fontSize: 14,
+    fontWeight: '600',
     color: '#e2e8f0',
-    marginTop: 12,
+    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   controlCard: {
     backgroundColor: '#ffffff',
@@ -832,4 +969,72 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(124, 58, 237, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 20,
+    padding: 40,
+    paddingHorizontal: 32,
+    width: '90%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.15,
+    shadowRadius: 60,
+    elevation: 10,
+    alignItems: 'center',
+  },
+  modalIconContainer: {
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 22,
+  },
+  modalProgress: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#7c3aed',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  modalButtonPrimary: {
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalButtonGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
 });
+
