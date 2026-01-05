@@ -4,6 +4,7 @@
     "slug": "physphere-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/logo_physphere_icon_only.png",
     "userInterfaceStyle": "light",
     "scheme": "physphere",
     "assetBundlePatterns": [
@@ -15,7 +16,11 @@
       }
     },
     "android": {
-      "package": "com.felowrii.physpheremobile"
+      "package": "com.felowrii.physpheremobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo_physphere_icon_only.png",
+        "backgroundColor": "#FFFFFF"
+      }
     }
   }
 }
